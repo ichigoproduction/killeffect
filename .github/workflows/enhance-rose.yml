@@ -1,0 +1,67 @@
+name: Enhance Rose Kill Effect
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - '.github/workflows/enhance-rose.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle 9.2.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.2.1'
+
+      - name: Enhance Rose effect
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/client/java/dose/killeffect/client/KillEffect.java')
+          s = path.read_text(encoding='utf-8')
+
+          def replace_once(old, new):
+              global s
+              if old not in s:
+                  raise SystemExit(f'Patch anchor not found:\n{old}')
+              s = s.replace(old, new, 1)
+
+          replace_once(
+              '''    // ===== Rose tuning =====\n    private static final DustParticleEffect ROSE_PINK = new DustParticleEffect(0xFF5A9D, 1.10f);\n    private static final DustParticleEffect ROSE_RED = new DustParticleEffect(0xC71952, 0.95f);\n    private static final int ROSE_PARTICLES = 46;''',
+              '''    // ===== Rose tuning =====\n    private static final DustParticleEffect ROSE_PINK = new DustParticleEffect(0xFF5A9D, 1.10f);\n    private static final DustParticleEffect ROSE_RED = new DustParticleEffect(0xC71952, 0.95f);\n    private static final DustParticleEffect ROSE_GLOW = new DustParticleEffect(0xFFD6EA, 0.85f);\n    private static final int ROSE_PARTICLES = 72;\n    private static final int ROSE_RING_PARTICLES = 36;\n    private static final int ROSE_FALLING_PETALS = 24;'''
+          )
+
+          old_method = '''    private static void spawnRose(ClientWorld world, Vec3d pos) {\n        double x = pos.x;\n        double y = pos.y + 0.9;\n        double z = pos.z;\n\n        for (int i = 0; i < ROSE_PARTICLES; i++) {\n            double angle = Math.random() * Math.PI * 2.0;\n            double radius = 0.18 + Math.random() * 0.75;\n            double px = x + Math.cos(angle) * radius;\n            double py = y + (Math.random() - 0.5) * 0.85;\n            double pz = z + Math.sin(angle) * radius;\n            double tangentX = -Math.sin(angle) * (0.025 + Math.random() * 0.035);\n            double tangentZ = Math.cos(angle) * (0.025 + Math.random() * 0.035);\n\n            ParticleEffect p;\n            if (i % 3 == 0) p = ParticleTypes.CHERRY_LEAVES;\n            else p = (i % 2 == 0) ? ROSE_PINK : ROSE_RED;\n\n            world.addParticle(p, px, py, pz, tangentX, 0.035 + Math.random() * 0.085, tangentZ);\n        }\n\n        for (int i = 0; i < 18; i++) {\n            double a = Math.PI * 2.0 * i / 18.0;\n            double r = 0.45 + (i % 3) * 0.15;\n            world.addParticle(ROSE_PINK, x + Math.cos(a) * r, pos.y + 0.10, z + Math.sin(a) * r, 0.0, 0.018, 0.0);\n        }\n\n        SoundEvent s = soundOfByIdFallback("block.cherry_leaves.break", SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME);\n        if (s != null) world.playSound(x, y, z, s, SoundCategory.PLAYERS, 1.0f, 1.22f, false);\n    }'''
+
+          new_method = '''    private static void spawnRose(ClientWorld world, Vec3d pos) {\n        double x = pos.x;\n        double y = pos.y + 0.95;\n        double z = pos.z;\n\n        // Bright inner bloom: a compact flash makes the flower feel like it\n        // actually opens before the larger petal cloud expands around it.\n        for (int i = 0; i < 22; i++) {\n            double angle = Math.random() * Math.PI * 2.0;\n            double horizontal = 0.08 + Math.random() * 0.22;\n            double vx = Math.cos(angle) * horizontal;\n            double vz = Math.sin(angle) * horizontal;\n            double vy = 0.04 + Math.random() * 0.22;\n\n            ParticleEffect p = (i % 4 == 0) ? ParticleTypes.END_ROD : ROSE_GLOW;\n            world.addParticle(\n                    p,\n                    x + (Math.random() - 0.5) * 0.18,\n                    y + (Math.random() - 0.5) * 0.28,\n                    z + (Math.random() - 0.5) * 0.18,\n                    vx, vy, vz\n            );\n        }\n\n        // Main rose blossom. Petals spiral outward instead of simply rising,\n        // with three colour/particle layers so the cloud has visible depth.\n        for (int i = 0; i < ROSE_PARTICLES; i++) {\n            double angle = Math.random() * Math.PI * 2.0;\n            double radius = 0.20 + Math.random() * 1.05;\n            double px = x + Math.cos(angle) * radius;\n            double py = y + (Math.random() - 0.5) * 1.15;\n            double pz = z + Math.sin(angle) * radius;\n\n            double outward = 0.018 + Math.random() * 0.045;\n            double swirl = 0.035 + Math.random() * 0.055;\n            double vx = Math.cos(angle) * outward - Math.sin(angle) * swirl;\n            double vz = Math.sin(angle) * outward + Math.cos(angle) * swirl;\n            double vy = 0.035 + Math.random() * 0.105;\n\n            ParticleEffect p;\n            if (i % 3 == 0) p = ParticleTypes.CHERRY_LEAVES;\n            else if (i % 5 == 0) p = ROSE_GLOW;\n            else p = (i % 2 == 0) ? ROSE_PINK : ROSE_RED;\n\n            world.addParticle(p, px, py, pz, vx, vy, vz);\n        }\n\n        // Double ground bloom: an inner bright ring and a wider alternating\n        // pink/red ring give the effect a clear flower-shaped footprint.\n        for (int ring = 0; ring < 2; ring++) {\n            double radius = (ring == 0) ? 0.52 : 0.92;\n            int count = (ring == 0) ? ROSE_RING_PARTICLES / 2 : ROSE_RING_PARTICLES;\n            for (int i = 0; i < count; i++) {\n                double a = Math.PI * 2.0 * i / count + ring * 0.08;\n                ParticleEffect p = (ring == 0)\n                        ? ROSE_GLOW\n                        : ((i % 2 == 0) ? ROSE_PINK : ROSE_RED);\n                world.addParticle(\n                        p,\n                        x + Math.cos(a) * radius,\n                        pos.y + 0.10 + Math.random() * 0.05,\n                        z + Math.sin(a) * radius,\n                        Math.cos(a) * 0.012,\n                        0.015 + Math.random() * 0.018,\n                        Math.sin(a) * 0.012\n                );\n            }\n        }\n\n        // Petal rain above the victim keeps the finish visible for a little\n        // longer without turning Rose into another explosion-style effect.\n        for (int i = 0; i < ROSE_FALLING_PETALS; i++) {\n            double angle = Math.random() * Math.PI * 2.0;\n            double radius = 0.25 + Math.random() * 1.10;\n            double px = x + Math.cos(angle) * radius;\n            double py = y + 0.85 + Math.random() * 1.15;\n            double pz = z + Math.sin(angle) * radius;\n            double drift = 0.015 + Math.random() * 0.035;\n\n            ParticleEffect p = (i % 2 == 0) ? ParticleTypes.CHERRY_LEAVES : ROSE_PINK;\n            world.addParticle(\n                    p, px, py, pz,\n                    -Math.sin(angle) * drift,\n                    -0.025 - Math.random() * 0.035,\n                    Math.cos(angle) * drift\n            );\n        }\n\n        // Layer a soft leaf sound with a higher crystalline chime. The first\n        // reads as petals bursting outward; the second provides a clean kill cue.\n        SoundEvent petals = soundOfByIdFallback(\n                "block.cherry_leaves.break",\n                SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME\n        );\n        if (petals != null) {\n            world.playSound(x, y, z, petals, SoundCategory.PLAYERS, 1.15f, 1.08f, false);\n        }\n\n        SoundEvent chime = soundOfByIdFallback(\n                "block.amethyst_cluster.break",\n                SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME\n        );\n        if (chime != null) {\n            world.playSound(x, y, z, chime, SoundCategory.PLAYERS, 1.05f, 1.48f, false);\n        }\n    }'''
+
+          replace_once(old_method, new_method)
+          path.write_text(s, encoding='utf-8')
+
+      - name: Build
+        run: gradle build --stacktrace
+
+      - name: Commit enhanced Rose
+        run: |
+          git config user.name "ichigoproduction"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/client/java/dose/killeffect/client/KillEffect.java
+          git commit -m "Enhance Rose kill effect"
+          git push origin HEAD:master
