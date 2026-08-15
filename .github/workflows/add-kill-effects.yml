@@ -1,0 +1,92 @@
+name: Add Kill Effects
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - '.github/workflows/add-kill-effects.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle 9.2.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.2.1'
+
+      - name: Add Blood and Explosion effects
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/client/java/dose/killeffect/client/KillEffect.java')
+          s = path.read_text(encoding='utf-8')
+
+          def replace_once(old, new):
+              global s
+              if old not in s:
+                  raise SystemExit(f'Patch anchor not found:\n{old}')
+              s = s.replace(old, new, 1)
+
+          replace_once(
+              'import net.minecraft.particle.ParticleEffect;\nimport net.minecraft.particle.ParticleTypes;',
+              'import net.minecraft.particle.DustParticleEffect;\nimport net.minecraft.particle.ParticleEffect;\nimport net.minecraft.particle.ParticleTypes;'
+          )
+
+          replace_once(
+              '    private static final double POTION_DROP_HEIGHT = 2.8;\n    private static final long POTION_TIMEOUT_MS = 2500;\n',
+              '''    private static final double POTION_DROP_HEIGHT = 2.8;\n    private static final long POTION_TIMEOUT_MS = 2500;\n\n    // ===== Blood tuning =====\n    private static final DustParticleEffect BLOOD_BRIGHT = new DustParticleEffect(0xB30D21, 1.35f);\n    private static final DustParticleEffect BLOOD_DARK = new DustParticleEffect(0x650611, 1.10f);\n    private static final int BLOOD_BURST_PARTICLES = 34;\n    private static final int BLOOD_GROUND_PARTICLES = 20;\n\n    // ===== Explosion tuning =====\n    private static final int EXPLOSION_RING_PARTICLES = 36;\n    private static final int EXPLOSION_SMOKE_PARTICLES = 18;\n    private static final double EXPLOSION_RING_RADIUS = 1.55;\n'''
+          )
+
+          replace_once(
+              '        WING,\n        POTION,\n        SOUL;',
+              '        WING,\n        POTION,\n        SOUL,\n        BLOOD,\n        EXPLOSION;'
+          )
+
+          replace_once(
+              '            if (q.equals("soul") || q.equals("glitch")) return SOUL;\n            return null;',
+              '            if (q.equals("soul") || q.equals("glitch")) return SOUL;\n            if (q.equals("blood")) return BLOOD;\n            if (q.equals("explosion") || q.equals("explode")) return EXPLOSION;\n            return null;'
+          )
+
+          replace_once(
+              '''                            .then(ClientCommandManager.literal("soul").executes(ctx -> {\n                                effect = EffectType.SOUL;\n                                saveConfig();\n                                send(statusLine());\n                                return 1;\n                            }))\n                            .then(ClientCommandManager.argument("effect", StringArgumentType.word())''',
+              '''                            .then(ClientCommandManager.literal("soul").executes(ctx -> {\n                                effect = EffectType.SOUL;\n                                saveConfig();\n                                send(statusLine());\n                                return 1;\n                            }))\n                            .then(ClientCommandManager.literal("blood").executes(ctx -> {\n                                effect = EffectType.BLOOD;\n                                saveConfig();\n                                send(statusLine());\n                                return 1;\n                            }))\n                            .then(ClientCommandManager.literal("explosion").executes(ctx -> {\n                                effect = EffectType.EXPLOSION;\n                                saveConfig();\n                                send(statusLine());\n                                return 1;\n                            }))\n                            .then(ClientCommandManager.argument("effect", StringArgumentType.word())'''
+          )
+
+          replace_once(
+              '.append(gray("  (supported: thunder, totem, wing, potion, soul)")));',
+              '.append(gray("  (supported: thunder, totem, wing, potion, soul, blood, explosion)")));'
+          )
+
+          replace_once(
+              '''        else if (type == EffectType.POTION) spawnPotionDrop(world, pos, nowMs);\n        else if (type == EffectType.SOUL) spawnSoul(world, pos, nowMs);\n    }\n\n    private static void spawnThunder''',
+              '''        else if (type == EffectType.POTION) spawnPotionDrop(world, pos, nowMs);\n        else if (type == EffectType.SOUL) spawnSoul(world, pos, nowMs);\n        else if (type == EffectType.BLOOD) spawnBlood(world, pos);\n        else if (type == EffectType.EXPLOSION) spawnExplosion(world, pos);\n    }\n\n    private static void spawnBlood(ClientWorld world, Vec3d pos) {\n        double x = pos.x;\n        double y = pos.y + 1.0;\n        double z = pos.z;\n\n        // Dense two-tone burst from roughly chest height. Most particles travel\n        // sideways, with a smaller upward component so the effect reads as a hit.\n        for (int i = 0; i < BLOOD_BURST_PARTICLES; i++) {\n            double angle = Math.random() * Math.PI * 2.0;\n            double speed = 0.16 + Math.random() * 0.34;\n            double horizontal = 0.70 + Math.random() * 0.30;\n            double vx = Math.cos(angle) * speed * horizontal;\n            double vz = Math.sin(angle) * speed * horizontal;\n            double vy = -0.08 + Math.random() * 0.38;\n\n            ParticleEffect dust = (i % 4 == 0) ? BLOOD_DARK : BLOOD_BRIGHT;\n            world.addParticle(\n                    dust,\n                    x + (Math.random() - 0.5) * 0.28,\n                    y + (Math.random() - 0.5) * 0.45,\n                    z + (Math.random() - 0.5) * 0.28,\n                    vx, vy, vz\n            );\n\n            if (i % 7 == 0) {\n                world.addParticle(\n                        ParticleTypes.DAMAGE_INDICATOR,\n                        x + (Math.random() - 0.5) * 0.35,\n                        y + Math.random() * 0.35,\n                        z + (Math.random() - 0.5) * 0.35,\n                        vx * 0.35,\n                        0.04 + Math.random() * 0.10,\n                        vz * 0.35\n                );\n            }\n        }\n\n        // A flatter secondary splash gives the burst a grounded finish rather\n        // than looking like a floating red sphere.\n        double groundY = pos.y + 0.08;\n        for (int i = 0; i < BLOOD_GROUND_PARTICLES; i++) {\n            double angle = Math.PI * 2.0 * i / BLOOD_GROUND_PARTICLES + (Math.random() - 0.5) * 0.16;\n            double radius = 0.25 + Math.random() * 0.80;\n            double px = x + Math.cos(angle) * radius;\n            double pz = z + Math.sin(angle) * radius;\n            ParticleEffect dust = (i % 3 == 0) ? BLOOD_DARK : BLOOD_BRIGHT;\n            world.addParticle(\n                    dust, px, groundY + Math.random() * 0.08, pz,\n                    Math.cos(angle) * 0.035,\n                    0.005 + Math.random() * 0.018,\n                    Math.sin(angle) * 0.035\n            );\n        }\n\n        SoundEvent hit = soundOfByIdFallback("entity.player.attack.crit", SoundEvents.ENTITY_GENERIC_HURT);\n        if (hit != null) {\n            world.playSound(x, y, z, hit, SoundCategory.PLAYERS, 1.1f, 0.78f, false);\n        }\n    }\n\n    private static void spawnExplosion(ClientWorld world, Vec3d pos) {\n        double x = pos.x;\n        double y = pos.y + 0.85;\n        double z = pos.z;\n\n        // Bright compact core. Nothing here creates a real Minecraft explosion;\n        // this is purely client-side particles and sound.\n        world.addParticle(ParticleTypes.EXPLOSION, x, y, z, 0.0, 0.0, 0.0);\n        world.addParticle(ParticleTypes.EXPLOSION, x + 0.22, y + 0.12, z - 0.12, 0.0, 0.0, 0.0);\n        world.addParticle(ParticleTypes.EXPLOSION, x - 0.18, y - 0.05, z + 0.18, 0.0, 0.0, 0.0);\n\n        // 360-degree shockwave. Alternating POOF/FLAME particles make a bright\n        // leading edge while their outward velocity keeps the ring expanding.\n        for (int i = 0; i < EXPLOSION_RING_PARTICLES; i++) {\n            double angle = Math.PI * 2.0 * i / EXPLOSION_RING_PARTICLES;\n            double jitter = (Math.random() - 0.5) * 0.12;\n            double radius = 0.28 + Math.random() * 0.18;\n            double dx = Math.cos(angle + jitter);\n            double dz = Math.sin(angle + jitter);\n            double speed = 0.28 + Math.random() * 0.22;\n\n            ParticleEffect ring = (i % 4 == 0) ? ParticleTypes.FLAME : ParticleTypes.POOF;\n            world.addParticle(\n                    ring,\n                    x + dx * radius,\n                    y - 0.10 + Math.random() * 0.28,\n                    z + dz * radius,\n                    dx * speed,\n                    0.015 + Math.random() * 0.09,\n                    dz * speed\n            );\n\n            if (i % 6 == 0) {\n                double outer = EXPLOSION_RING_RADIUS * (0.82 + Math.random() * 0.18);\n                world.addParticle(\n                        ParticleTypes.CRIT,\n                        x + dx * outer,\n                        y + (Math.random() - 0.5) * 0.35,\n                        z + dz * outer,\n                        dx * 0.08,\n                        Math.random() * 0.08,\n                        dz * 0.08\n                );\n            }\n        }\n\n        // Smoke lingers behind the fast shockwave and gives the explosion depth.\n        for (int i = 0; i < EXPLOSION_SMOKE_PARTICLES; i++) {\n            double angle = Math.random() * Math.PI * 2.0;\n            double radius = Math.random() * 0.70;\n            double px = x + Math.cos(angle) * radius;\n            double pz = z + Math.sin(angle) * radius;\n            ParticleEffect smoke = (i % 3 == 0) ? ParticleTypes.LARGE_SMOKE : ParticleTypes.SMOKE;\n            world.addParticle(\n                    smoke,\n                    px,\n                    y - 0.20 + Math.random() * 0.85,\n                    pz,\n                    (Math.random() - 0.5) * 0.09,\n                    0.06 + Math.random() * 0.14,\n                    (Math.random() - 0.5) * 0.09\n            );\n        }\n\n        SoundEvent boom = soundOfByIdFallback("entity.generic.explode", SoundEvents.ENTITY_GENERIC_EXPLODE);\n        if (boom != null) {\n            world.playSound(x, y, z, boom, SoundCategory.PLAYERS, 1.65f, 0.92f, false);\n        }\n    }\n\n    private static void spawnThunder'''
+          )
+
+          path.write_text(s, encoding='utf-8')
+
+      - name: Build
+        run: gradle build --stacktrace
+
+      - name: Commit effects
+        run: |
+          git config user.name "ichigoproduction"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/client/java/dose/killeffect/client/KillEffect.java
+          git commit -m "Add Blood and Explosion kill effects"
+          git push origin HEAD:master
