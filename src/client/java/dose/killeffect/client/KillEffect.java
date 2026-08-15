@@ -75,23 +75,23 @@ public final class KillEffect {
     private static final int EXPLOSION_SMOKE_PARTICLES = 18;
     private static final double EXPLOSION_RING_RADIUS = 1.55;
 
-    // ===== Void tuning =====
-    private static final DustParticleEffect VOID_PURPLE = new DustParticleEffect(0x7137FF, 1.15f);
-    private static final DustParticleEffect VOID_DARK = new DustParticleEffect(0x21002E, 1.25f);
-    private static final int VOID_PARTICLES = 52;
+    // ===== Ender tuning =====
+    private static final DustParticleEffect ENDER_SIMPLE_PURPLE = new DustParticleEffect(0x7137FF, 1.15f);
+    private static final DustParticleEffect ENDER_SIMPLE_DARK = new DustParticleEffect(0x21002E, 1.25f);
+    private static final int ENDER_SIMPLE_PARTICLES = 52;
 
     // ===== Freeze tuning =====
     private static final DustParticleEffect FREEZE_BRIGHT = new DustParticleEffect(0xD8FAFF, 1.10f);
     private static final DustParticleEffect FREEZE_BLUE = new DustParticleEffect(0x72DFFF, 1.00f);
     private static final int FREEZE_PARTICLES = 42;
 
-    // ===== Ender / black-hole tuning =====
-    private static final DustParticleEffect ENDER_PURPLE = new DustParticleEffect(0x8E44FF, 0.95f);
-    private static final DustParticleEffect ENDER_DARK = new DustParticleEffect(0x17001F, 1.20f);
-    private static final long ENDER_DURATION_MS = 650;
-    private static final int ENDER_PARTICLES_PER_TICK = 24;
-    private static final double ENDER_MAX_RADIUS = 2.15;
-    private static int enderSeq = 1;
+    // ===== Void / black-hole tuning =====
+    private static final DustParticleEffect VOID_PURPLE = new DustParticleEffect(0x8E44FF, 0.95f);
+    private static final DustParticleEffect VOID_DARK = new DustParticleEffect(0x17001F, 1.20f);
+    private static final long VOID_DURATION_MS = 650;
+    private static final int VOID_PARTICLES_PER_TICK = 24;
+    private static final double VOID_MAX_RADIUS = 2.15;
+    private static int voidSeq = 1;
 
     // ===== Rose tuning =====
     private static final DustParticleEffect ROSE_PINK = new DustParticleEffect(0xFF5A9D, 1.10f);
@@ -130,9 +130,9 @@ public final class KillEffect {
             if (q.equals("soul") || q.equals("glitch")) return SOUL;
             if (q.equals("blood")) return BLOOD;
             if (q.equals("explosion") || q.equals("explode")) return EXPLOSION;
-            if (q.equals("void")) return VOID;
+            if (q.equals("void") || q.equals("blackhole") || q.equals("black_hole")) return VOID;
             if (q.equals("freeze") || q.equals("ice")) return FREEZE;
-            if (q.equals("ender") || q.equals("blackhole") || q.equals("black_hole")) return ENDER;
+            if (q.equals("ender")) return ENDER;
             if (q.equals("rose")) return ROSE;
             return null;
         }
@@ -209,17 +209,17 @@ public final class KillEffect {
         }
     }
 
-    // ===== Ender black-hole tracking =====
-    private static final Map<Integer, EnderBurst> enderBursts = new HashMap<>();
+    // ===== Void black-hole tracking =====
+    private static final Map<Integer, VoidBurst> voidBursts = new HashMap<>();
 
-    private static final class EnderBurst {
+    private static final class VoidBurst {
         final int id;
         final Vec3d basePos;
         final long startMs;
         final long endMs;
         int tick;
 
-        EnderBurst(int id, Vec3d basePos, long startMs, long endMs) {
+        VoidBurst(int id, Vec3d basePos, long startMs, long endMs) {
             this.id = id;
             this.basePos = basePos;
             this.startMs = startMs;
@@ -371,7 +371,7 @@ public final class KillEffect {
         if (world == null) return;
 
         tickGlitchBursts(world, nowMs);
-        tickEnderBursts(world, nowMs);
+        tickVoidBursts(world, nowMs);
         tickPotionDrops(world, nowMs);
 
         if (tracks.isEmpty()) return;
@@ -413,16 +413,16 @@ public final class KillEffect {
         else if (type == EffectType.SOUL) spawnSoul(world, pos, nowMs);
         else if (type == EffectType.BLOOD) spawnBlood(world, pos);
         else if (type == EffectType.EXPLOSION) spawnExplosion(world, pos);
-        else if (type == EffectType.VOID) spawnVoid(world, pos);
+        else if (type == EffectType.VOID) spawnVoid(world, pos, nowMs);
         else if (type == EffectType.FREEZE) spawnFreeze(world, pos);
-        else if (type == EffectType.ENDER) spawnEnder(world, pos, nowMs);
+        else if (type == EffectType.ENDER) spawnEnder(world, pos);
         else if (type == EffectType.ROSE) spawnRose(world, pos);
     }
 
-    private static void spawnVoid(ClientWorld world, Vec3d pos) {
+    private static void spawnEnder(ClientWorld world, Vec3d pos) {
         Vec3d center = new Vec3d(pos.x, pos.y + 1.0, pos.z);
 
-        for (int i = 0; i < VOID_PARTICLES; i++) {
+        for (int i = 0; i < ENDER_SIMPLE_PARTICLES; i++) {
             double angle = Math.random() * Math.PI * 2.0;
             double radius = 0.55 + Math.random() * 1.15;
             double height = (Math.random() - 0.5) * 1.65;
@@ -436,8 +436,8 @@ public final class KillEffect {
 
             ParticleEffect p;
             if (i % 5 == 0) p = ParticleTypes.REVERSE_PORTAL;
-            else if (i % 3 == 0) p = VOID_DARK;
-            else p = VOID_PURPLE;
+            else if (i % 3 == 0) p = ENDER_SIMPLE_DARK;
+            else p = ENDER_SIMPLE_PURPLE;
 
             world.addParticle(p, px, py, pz, inward.x * speed, inward.y * speed, inward.z * speed);
         }
@@ -499,38 +499,38 @@ public final class KillEffect {
         if (crack != null) world.playSound(x, y, z, crack, SoundCategory.PLAYERS, 1.25f, 1.35f, false);
     }
 
-    private static void spawnEnder(ClientWorld world, Vec3d pos, long nowMs) {
+    private static void spawnVoid(ClientWorld world, Vec3d pos, long nowMs) {
         Vec3d center = new Vec3d(pos.x, pos.y + 0.95, pos.z);
-        int id = enderSeq++;
-        enderBursts.put(id, new EnderBurst(id, center, nowMs, nowMs + ENDER_DURATION_MS));
+        int id = voidSeq++;
+        voidBursts.put(id, new VoidBurst(id, center, nowMs, nowMs + VOID_DURATION_MS));
 
         SoundEvent s = soundOfByIdFallback("entity.enderman.stare", SoundEvents.ENTITY_ENDERMAN_TELEPORT);
         if (s != null) world.playSound(center.x, center.y, center.z, s, SoundCategory.PLAYERS, 1.0f, 0.55f, false);
-        emitEnderFrame(world, enderBursts.get(id), nowMs);
+        emitVoidFrame(world, voidBursts.get(id), nowMs);
     }
 
-    private static void tickEnderBursts(ClientWorld world, long nowMs) {
-        if (enderBursts.isEmpty()) return;
+    private static void tickVoidBursts(ClientWorld world, long nowMs) {
+        if (voidBursts.isEmpty()) return;
 
-        Iterator<Map.Entry<Integer, EnderBurst>> it = enderBursts.entrySet().iterator();
+        Iterator<Map.Entry<Integer, VoidBurst>> it = voidBursts.entrySet().iterator();
         while (it.hasNext()) {
-            EnderBurst eb = it.next().getValue();
+            VoidBurst eb = it.next().getValue();
             if (nowMs >= eb.endMs) {
-                finishEnder(world, eb);
+                finishVoid(world, eb);
                 it.remove();
                 continue;
             }
-            emitEnderFrame(world, eb, nowMs);
+            emitVoidFrame(world, eb, nowMs);
         }
     }
 
-    private static void emitEnderFrame(ClientWorld world, EnderBurst eb, long nowMs) {
+    private static void emitVoidFrame(ClientWorld world, VoidBurst eb, long nowMs) {
         eb.tick++;
-        double t = MathHelper.clamp((nowMs - eb.startMs) / (double) ENDER_DURATION_MS, 0.0, 1.0);
-        double radius = 0.22 + ENDER_MAX_RADIUS * (1.0 - t);
+        double t = MathHelper.clamp((nowMs - eb.startMs) / (double) VOID_DURATION_MS, 0.0, 1.0);
+        double radius = 0.22 + VOID_MAX_RADIUS * (1.0 - t);
         double vertical = 0.35 + 1.05 * (1.0 - t);
 
-        int count = Math.max(8, (int) Math.round(ENDER_PARTICLES_PER_TICK * (0.70 + t * 0.55)));
+        int count = Math.max(8, (int) Math.round(VOID_PARTICLES_PER_TICK * (0.70 + t * 0.55)));
         for (int i = 0; i < count; i++) {
             double a = Math.random() * Math.PI * 2.0;
             double r = radius * (0.55 + Math.random() * 0.45);
@@ -544,8 +544,8 @@ public final class KillEffect {
 
             ParticleEffect p;
             if (i % 6 == 0) p = ParticleTypes.REVERSE_PORTAL;
-            else if (i % 3 == 0) p = ENDER_DARK;
-            else p = ENDER_PURPLE;
+            else if (i % 3 == 0) p = VOID_DARK;
+            else p = VOID_PURPLE;
 
             world.addParticle(p, px, py, pz, inward.x * speed, inward.y * speed, inward.z * speed);
         }
@@ -555,7 +555,7 @@ public final class KillEffect {
         }
     }
 
-    private static void finishEnder(ClientWorld world, EnderBurst eb) {
+    private static void finishVoid(ClientWorld world, VoidBurst eb) {
         Vec3d c = eb.basePos;
         world.addParticle(ParticleTypes.EXPLOSION, c.x, c.y, c.z, 0.0, 0.0, 0.0);
         for (int i = 0; i < 24; i++) {
