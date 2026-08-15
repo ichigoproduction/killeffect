@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-GRADLE_VERSION=9.5.1
+GRADLE_VERSION=9.2.1
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 BOOTSTRAP_DIR="$PROJECT_DIR/.gradle-bootstrap"
 GRADLE_HOME="$BOOTSTRAP_DIR/gradle-$GRADLE_VERSION"
