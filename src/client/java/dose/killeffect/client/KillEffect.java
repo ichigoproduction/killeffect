@@ -96,7 +96,10 @@ public final class KillEffect {
     // ===== Rose tuning =====
     private static final DustParticleEffect ROSE_PINK = new DustParticleEffect(0xFF5A9D, 1.10f);
     private static final DustParticleEffect ROSE_RED = new DustParticleEffect(0xC71952, 0.95f);
-    private static final int ROSE_PARTICLES = 46;
+    private static final DustParticleEffect ROSE_GLOW = new DustParticleEffect(0xFFD6EA, 0.85f);
+    private static final int ROSE_PARTICLES = 72;
+    private static final int ROSE_RING_PARTICLES = 36;
+    private static final int ROSE_FALLING_PETALS = 24;
 
     // ===== Soul / glitch tuning =====
     private static final long GLITCH_DURATION_MS = 200;
@@ -567,33 +570,109 @@ public final class KillEffect {
 
     private static void spawnRose(ClientWorld world, Vec3d pos) {
         double x = pos.x;
-        double y = pos.y + 0.9;
+        double y = pos.y + 0.95;
         double z = pos.z;
 
+        // Bright inner bloom: a compact flash makes the flower feel like it
+        // actually opens before the larger petal cloud expands around it.
+        for (int i = 0; i < 22; i++) {
+            double angle = Math.random() * Math.PI * 2.0;
+            double horizontal = 0.08 + Math.random() * 0.22;
+            double vx = Math.cos(angle) * horizontal;
+            double vz = Math.sin(angle) * horizontal;
+            double vy = 0.04 + Math.random() * 0.22;
+
+            ParticleEffect p = (i % 4 == 0) ? ParticleTypes.END_ROD : ROSE_GLOW;
+            world.addParticle(
+                    p,
+                    x + (Math.random() - 0.5) * 0.18,
+                    y + (Math.random() - 0.5) * 0.28,
+                    z + (Math.random() - 0.5) * 0.18,
+                    vx, vy, vz
+            );
+        }
+
+        // Main rose blossom. Petals spiral outward instead of simply rising,
+        // with three colour/particle layers so the cloud has visible depth.
         for (int i = 0; i < ROSE_PARTICLES; i++) {
             double angle = Math.random() * Math.PI * 2.0;
-            double radius = 0.18 + Math.random() * 0.75;
+            double radius = 0.20 + Math.random() * 1.05;
             double px = x + Math.cos(angle) * radius;
-            double py = y + (Math.random() - 0.5) * 0.85;
+            double py = y + (Math.random() - 0.5) * 1.15;
             double pz = z + Math.sin(angle) * radius;
-            double tangentX = -Math.sin(angle) * (0.025 + Math.random() * 0.035);
-            double tangentZ = Math.cos(angle) * (0.025 + Math.random() * 0.035);
+
+            double outward = 0.018 + Math.random() * 0.045;
+            double swirl = 0.035 + Math.random() * 0.055;
+            double vx = Math.cos(angle) * outward - Math.sin(angle) * swirl;
+            double vz = Math.sin(angle) * outward + Math.cos(angle) * swirl;
+            double vy = 0.035 + Math.random() * 0.105;
 
             ParticleEffect p;
             if (i % 3 == 0) p = ParticleTypes.CHERRY_LEAVES;
+            else if (i % 5 == 0) p = ROSE_GLOW;
             else p = (i % 2 == 0) ? ROSE_PINK : ROSE_RED;
 
-            world.addParticle(p, px, py, pz, tangentX, 0.035 + Math.random() * 0.085, tangentZ);
+            world.addParticle(p, px, py, pz, vx, vy, vz);
         }
 
-        for (int i = 0; i < 18; i++) {
-            double a = Math.PI * 2.0 * i / 18.0;
-            double r = 0.45 + (i % 3) * 0.15;
-            world.addParticle(ROSE_PINK, x + Math.cos(a) * r, pos.y + 0.10, z + Math.sin(a) * r, 0.0, 0.018, 0.0);
+        // Double ground bloom: an inner bright ring and a wider alternating
+        // pink/red ring give the effect a clear flower-shaped footprint.
+        for (int ring = 0; ring < 2; ring++) {
+            double radius = (ring == 0) ? 0.52 : 0.92;
+            int count = (ring == 0) ? ROSE_RING_PARTICLES / 2 : ROSE_RING_PARTICLES;
+            for (int i = 0; i < count; i++) {
+                double a = Math.PI * 2.0 * i / count + ring * 0.08;
+                ParticleEffect p = (ring == 0)
+                        ? ROSE_GLOW
+                        : ((i % 2 == 0) ? ROSE_PINK : ROSE_RED);
+                world.addParticle(
+                        p,
+                        x + Math.cos(a) * radius,
+                        pos.y + 0.10 + Math.random() * 0.05,
+                        z + Math.sin(a) * radius,
+                        Math.cos(a) * 0.012,
+                        0.015 + Math.random() * 0.018,
+                        Math.sin(a) * 0.012
+                );
+            }
         }
 
-        SoundEvent s = soundOfByIdFallback("block.cherry_leaves.break", SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME);
-        if (s != null) world.playSound(x, y, z, s, SoundCategory.PLAYERS, 1.0f, 1.22f, false);
+        // Petal rain above the victim keeps the finish visible for a little
+        // longer without turning Rose into another explosion-style effect.
+        for (int i = 0; i < ROSE_FALLING_PETALS; i++) {
+            double angle = Math.random() * Math.PI * 2.0;
+            double radius = 0.25 + Math.random() * 1.10;
+            double px = x + Math.cos(angle) * radius;
+            double py = y + 0.85 + Math.random() * 1.15;
+            double pz = z + Math.sin(angle) * radius;
+            double drift = 0.015 + Math.random() * 0.035;
+
+            ParticleEffect p = (i % 2 == 0) ? ParticleTypes.CHERRY_LEAVES : ROSE_PINK;
+            world.addParticle(
+                    p, px, py, pz,
+                    -Math.sin(angle) * drift,
+                    -0.025 - Math.random() * 0.035,
+                    Math.cos(angle) * drift
+            );
+        }
+
+        // Layer a soft leaf sound with a higher crystalline chime. The first
+        // reads as petals bursting outward; the second provides a clean kill cue.
+        SoundEvent petals = soundOfByIdFallback(
+                "block.cherry_leaves.break",
+                SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME
+        );
+        if (petals != null) {
+            world.playSound(x, y, z, petals, SoundCategory.PLAYERS, 1.15f, 1.08f, false);
+        }
+
+        SoundEvent chime = soundOfByIdFallback(
+                "block.amethyst_cluster.break",
+                SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME
+        );
+        if (chime != null) {
+            world.playSound(x, y, z, chime, SoundCategory.PLAYERS, 1.05f, 1.48f, false);
+        }
     }
 
     private static void spawnBlood(ClientWorld world, Vec3d pos) {
