@@ -43,7 +43,7 @@ jobs:
                   raise SystemExit(f'Patch anchor not found:\n{old}')
               s = s.replace(old, new, 1)
 
-          # Swap tuning blocks so names match their new public effect names.
+          # Rename the tuning blocks so internal names match the swapped effects.
           replace_once(
               '''    // ===== Void tuning =====\n    private static final DustParticleEffect VOID_PURPLE = new DustParticleEffect(0x7137FF, 1.15f);\n    private static final DustParticleEffect VOID_DARK = new DustParticleEffect(0x21002E, 1.25f);\n    private static final int VOID_PARTICLES = 52;''',
               '''    // ===== Ender tuning =====\n    private static final DustParticleEffect ENDER_SIMPLE_PURPLE = new DustParticleEffect(0x7137FF, 1.15f);\n    private static final DustParticleEffect ENDER_SIMPLE_DARK = new DustParticleEffect(0x21002E, 1.25f);\n    private static final int ENDER_SIMPLE_PARTICLES = 52;'''
@@ -54,44 +54,26 @@ jobs:
               '''    // ===== Void / black-hole tuning =====\n    private static final DustParticleEffect VOID_PURPLE = new DustParticleEffect(0x8E44FF, 0.95f);\n    private static final DustParticleEffect VOID_DARK = new DustParticleEffect(0x17001F, 1.20f);\n    private static final long VOID_DURATION_MS = 650;\n    private static final int VOID_PARTICLES_PER_TICK = 24;\n    private static final double VOID_MAX_RADIUS = 2.15;\n    private static int voidSeq = 1;'''
           )
 
-          # blackhole aliases now belong to Void.
           replace_once(
               '''            if (q.equals("void")) return VOID;\n            if (q.equals("freeze") || q.equals("ice")) return FREEZE;\n            if (q.equals("ender") || q.equals("blackhole") || q.equals("black_hole")) return ENDER;''',
               '''            if (q.equals("void") || q.equals("blackhole") || q.equals("black_hole")) return VOID;\n            if (q.equals("freeze") || q.equals("ice")) return FREEZE;\n            if (q.equals("ender")) return ENDER;'''
           )
 
-          # Rename the animated tracking implementation from Ender to Void.
-          replacements = [
-              ('// ===== Ender black-hole tracking =====', '// ===== Void black-hole tracking ====='),
-              ('Map<Integer, EnderBurst> enderBursts', 'Map<Integer, VoidBurst> voidBursts'),
-              ('new HashMap<>();\n\n    private static final class EnderBurst', 'new HashMap<>();\n\n    private static final class VoidBurst'),
-              ('EnderBurst(int id, Vec3d basePos, long startMs, long endMs)', 'VoidBurst(int id, Vec3d basePos, long startMs, long endMs)'),
-              ('tickEnderBursts(world, nowMs);', 'tickVoidBursts(world, nowMs);'),
-          ]
-          for old, new in replacements:
-              replace_once(old, new)
+          # Old simple Void implementation becomes Ender.
+          simple_start = s.index('    private static void spawnVoid(ClientWorld world, Vec3d pos) {')
+          simple_end = s.index('    private static void spawnFreeze', simple_start)
+          simple = s[simple_start:simple_end]
+          simple = simple.replace('spawnVoid', 'spawnEnder', 1)
+          simple = simple.replace('VOID_PARTICLES', 'ENDER_SIMPLE_PARTICLES')
+          simple = simple.replace('VOID_DARK', 'ENDER_SIMPLE_DARK')
+          simple = simple.replace('VOID_PURPLE', 'ENDER_SIMPLE_PURPLE')
+          s = s[:simple_start] + simple + s[simple_end:]
 
-          # Swap the public trigger mapping.
-          replace_once(
-              '''        else if (type == EffectType.VOID) spawnVoid(world, pos);\n        else if (type == EffectType.FREEZE) spawnFreeze(world, pos);\n        else if (type == EffectType.ENDER) spawnEnder(world, pos, nowMs);''',
-              '''        else if (type == EffectType.VOID) spawnVoid(world, pos, nowMs);\n        else if (type == EffectType.FREEZE) spawnFreeze(world, pos);\n        else if (type == EffectType.ENDER) spawnEnder(world, pos);'''
-          )
-
-          # Old simple Void becomes Ender.
-          replace_once('private static void spawnVoid(ClientWorld world, Vec3d pos)', 'private static void spawnEnder(ClientWorld world, Vec3d pos)')
-          s = s.replace('VOID_PARTICLES', 'ENDER_SIMPLE_PARTICLES', 1)
-          # Only within the simple method these are the old Void colours; replace their first occurrences after the method rename.
-          simple_start = s.index('private static void spawnEnder(ClientWorld world, Vec3d pos)')
-          freeze_start = s.index('private static void spawnFreeze', simple_start)
-          simple = s[simple_start:freeze_start]
-          simple = simple.replace('VOID_DARK', 'ENDER_SIMPLE_DARK').replace('VOID_PURPLE', 'ENDER_SIMPLE_PURPLE')
-          s = s[:simple_start] + simple + s[freeze_start:]
-
-          # Old animated Ender becomes Void and all its state/tuning names follow suit.
-          replace_once('private static void spawnEnder(ClientWorld world, Vec3d pos, long nowMs)', 'private static void spawnVoid(ClientWorld world, Vec3d pos, long nowMs)')
-          animated_start = s.index('private static void spawnVoid(ClientWorld world, Vec3d pos, long nowMs)')
-          rose_start = s.index('private static void spawnRose', animated_start)
-          animated = s[animated_start:rose_start]
+          # Old animated Ender implementation becomes Void.
+          animated_start = s.index('    private static void spawnEnder(ClientWorld world, Vec3d pos, long nowMs) {')
+          animated_end = s.index('    private static void spawnRose', animated_start)
+          animated = s[animated_start:animated_end]
+          animated = animated.replace('spawnEnder', 'spawnVoid', 1)
           animated = animated.replace('enderSeq', 'voidSeq')
           animated = animated.replace('enderBursts', 'voidBursts')
           animated = animated.replace('EnderBurst', 'VoidBurst')
@@ -103,18 +85,20 @@ jobs:
           animated = animated.replace('tickEnderBursts', 'tickVoidBursts')
           animated = animated.replace('emitEnderFrame', 'emitVoidFrame')
           animated = animated.replace('finishEnder', 'finishVoid')
-          s = s[:animated_start] + animated + s[rose_start:]
+          s = s[:animated_start] + animated + s[animated_end:]
 
-          # Rename the tracking methods/classes outside the animated method slice too.
-          s = s.replace('private static void tickEnderBursts', 'private static void tickVoidBursts')
-          s = s.replace('private static void emitEnderFrame', 'private static void emitVoidFrame')
-          s = s.replace('private static void finishEnder', 'private static void finishVoid')
-          s = s.replace('Iterator<Map.Entry<Integer, EnderBurst>>', 'Iterator<Map.Entry<Integer, VoidBurst>>')
-          s = s.replace('EnderBurst eb', 'VoidBurst vb')
-          s = s.replace('enderBursts', 'voidBursts')
-          s = s.replace('eb.', 'vb.')
-          s = s.replace('emitEnderFrame(world, eb', 'emitVoidFrame(world, vb')
-          s = s.replace('finishEnder(world, eb', 'finishVoid(world, vb')
+          # Tracking state belongs to the new Void black-hole effect.
+          s = s.replace('// ===== Ender black-hole tracking =====', '// ===== Void black-hole tracking =====')
+          s = s.replace('Map<Integer, EnderBurst> enderBursts', 'Map<Integer, VoidBurst> voidBursts')
+          s = s.replace('private static final class EnderBurst', 'private static final class VoidBurst')
+          s = s.replace('EnderBurst(int id, Vec3d basePos, long startMs, long endMs)', 'VoidBurst(int id, Vec3d basePos, long startMs, long endMs)')
+          s = s.replace('tickEnderBursts(world, nowMs);', 'tickVoidBursts(world, nowMs);')
+
+          # Public mapping is swapped: Void = black hole, Ender = short purple collapse.
+          replace_once(
+              '''        else if (type == EffectType.VOID) spawnVoid(world, pos);\n        else if (type == EffectType.FREEZE) spawnFreeze(world, pos);\n        else if (type == EffectType.ENDER) spawnEnder(world, pos, nowMs);''',
+              '''        else if (type == EffectType.VOID) spawnVoid(world, pos, nowMs);\n        else if (type == EffectType.FREEZE) spawnFreeze(world, pos);\n        else if (type == EffectType.ENDER) spawnEnder(world, pos);'''
+          )
 
           path.write_text(s, encoding='utf-8')
 
