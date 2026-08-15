@@ -6,5 +6,6 @@ public class KilleffectClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        KillEffect.register();
     }
 }
