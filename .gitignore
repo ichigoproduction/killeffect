@@ -1,0 +1,7 @@
+.gradle/
+.gradle-bootstrap/
+build/
+run/
+out/
+.idea/
+*.iml
