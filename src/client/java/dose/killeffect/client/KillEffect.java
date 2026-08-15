@@ -75,6 +75,29 @@ public final class KillEffect {
     private static final int EXPLOSION_SMOKE_PARTICLES = 18;
     private static final double EXPLOSION_RING_RADIUS = 1.55;
 
+    // ===== Void tuning =====
+    private static final DustParticleEffect VOID_PURPLE = new DustParticleEffect(0x7137FF, 1.15f);
+    private static final DustParticleEffect VOID_DARK = new DustParticleEffect(0x21002E, 1.25f);
+    private static final int VOID_PARTICLES = 52;
+
+    // ===== Freeze tuning =====
+    private static final DustParticleEffect FREEZE_BRIGHT = new DustParticleEffect(0xD8FAFF, 1.10f);
+    private static final DustParticleEffect FREEZE_BLUE = new DustParticleEffect(0x72DFFF, 1.00f);
+    private static final int FREEZE_PARTICLES = 42;
+
+    // ===== Ender / black-hole tuning =====
+    private static final DustParticleEffect ENDER_PURPLE = new DustParticleEffect(0x8E44FF, 0.95f);
+    private static final DustParticleEffect ENDER_DARK = new DustParticleEffect(0x17001F, 1.20f);
+    private static final long ENDER_DURATION_MS = 650;
+    private static final int ENDER_PARTICLES_PER_TICK = 24;
+    private static final double ENDER_MAX_RADIUS = 2.15;
+    private static int enderSeq = 1;
+
+    // ===== Rose tuning =====
+    private static final DustParticleEffect ROSE_PINK = new DustParticleEffect(0xFF5A9D, 1.10f);
+    private static final DustParticleEffect ROSE_RED = new DustParticleEffect(0xC71952, 0.95f);
+    private static final int ROSE_PARTICLES = 46;
+
     // ===== Soul / glitch tuning =====
     private static final long GLITCH_DURATION_MS = 200;
     private static final int GLITCH_PARTICLES_PER_TICK = 26;
@@ -88,7 +111,11 @@ public final class KillEffect {
         POTION,
         SOUL,
         BLOOD,
-        EXPLOSION;
+        EXPLOSION,
+        VOID,
+        FREEZE,
+        ENDER,
+        ROSE;
 
         static EffectType parse(String s) {
             if (s == null) return THUNDER;
@@ -100,6 +127,10 @@ public final class KillEffect {
             if (q.equals("soul") || q.equals("glitch")) return SOUL;
             if (q.equals("blood")) return BLOOD;
             if (q.equals("explosion") || q.equals("explode")) return EXPLOSION;
+            if (q.equals("void")) return VOID;
+            if (q.equals("freeze") || q.equals("ice")) return FREEZE;
+            if (q.equals("ender") || q.equals("blackhole") || q.equals("black_hole")) return ENDER;
+            if (q.equals("rose")) return ROSE;
             return null;
         }
 
@@ -175,6 +206,25 @@ public final class KillEffect {
         }
     }
 
+    // ===== Ender black-hole tracking =====
+    private static final Map<Integer, EnderBurst> enderBursts = new HashMap<>();
+
+    private static final class EnderBurst {
+        final int id;
+        final Vec3d basePos;
+        final long startMs;
+        final long endMs;
+        int tick;
+
+        EnderBurst(int id, Vec3d basePos, long startMs, long endMs) {
+            this.id = id;
+            this.basePos = basePos;
+            this.startMs = startMs;
+            this.endMs = endMs;
+            this.tick = 0;
+        }
+    }
+
     // ===== Public API =====
     public static void register() {
         loadConfig();
@@ -235,6 +285,30 @@ public final class KillEffect {
                                 send(statusLine());
                                 return 1;
                             }))
+                            .then(ClientCommandManager.literal("void").executes(ctx -> {
+                                effect = EffectType.VOID;
+                                saveConfig();
+                                send(statusLine());
+                                return 1;
+                            }))
+                            .then(ClientCommandManager.literal("freeze").executes(ctx -> {
+                                effect = EffectType.FREEZE;
+                                saveConfig();
+                                send(statusLine());
+                                return 1;
+                            }))
+                            .then(ClientCommandManager.literal("ender").executes(ctx -> {
+                                effect = EffectType.ENDER;
+                                saveConfig();
+                                send(statusLine());
+                                return 1;
+                            }))
+                            .then(ClientCommandManager.literal("rose").executes(ctx -> {
+                                effect = EffectType.ROSE;
+                                saveConfig();
+                                send(statusLine());
+                                return 1;
+                            }))
                             .then(ClientCommandManager.argument("effect", StringArgumentType.word())
                                     .executes(ctx -> {
                                         String arg = StringArgumentType.getString(ctx, "effect");
@@ -248,7 +322,7 @@ public final class KillEffect {
                                             send(header()
                                                     .append(gray("Unknown effect: "))
                                                     .append(light(arg))
-                                                    .append(gray("  (supported: thunder, totem, wing, potion, soul, blood, explosion)")));
+                                                    .append(gray("  (supported: thunder, totem, wing, potion, soul, blood, explosion, void, freeze, ender, rose)")));
                                             return 1;
                                         }
 
@@ -294,6 +368,7 @@ public final class KillEffect {
         if (world == null) return;
 
         tickGlitchBursts(world, nowMs);
+        tickEnderBursts(world, nowMs);
         tickPotionDrops(world, nowMs);
 
         if (tracks.isEmpty()) return;
@@ -335,6 +410,190 @@ public final class KillEffect {
         else if (type == EffectType.SOUL) spawnSoul(world, pos, nowMs);
         else if (type == EffectType.BLOOD) spawnBlood(world, pos);
         else if (type == EffectType.EXPLOSION) spawnExplosion(world, pos);
+        else if (type == EffectType.VOID) spawnVoid(world, pos);
+        else if (type == EffectType.FREEZE) spawnFreeze(world, pos);
+        else if (type == EffectType.ENDER) spawnEnder(world, pos, nowMs);
+        else if (type == EffectType.ROSE) spawnRose(world, pos);
+    }
+
+    private static void spawnVoid(ClientWorld world, Vec3d pos) {
+        Vec3d center = new Vec3d(pos.x, pos.y + 1.0, pos.z);
+
+        for (int i = 0; i < VOID_PARTICLES; i++) {
+            double angle = Math.random() * Math.PI * 2.0;
+            double radius = 0.55 + Math.random() * 1.15;
+            double height = (Math.random() - 0.5) * 1.65;
+            double px = center.x + Math.cos(angle) * radius;
+            double py = center.y + height;
+            double pz = center.z + Math.sin(angle) * radius;
+
+            Vec3d inward = center.subtract(new Vec3d(px, py, pz));
+            if (inward.lengthSquared() > 1.0E-6) inward = inward.normalize();
+            double speed = 0.08 + Math.random() * 0.16;
+
+            ParticleEffect p;
+            if (i % 5 == 0) p = ParticleTypes.REVERSE_PORTAL;
+            else if (i % 3 == 0) p = VOID_DARK;
+            else p = VOID_PURPLE;
+
+            world.addParticle(p, px, py, pz, inward.x * speed, inward.y * speed, inward.z * speed);
+        }
+
+        for (int i = 0; i < 12; i++) {
+            double a = Math.PI * 2.0 * i / 12.0;
+            world.addParticle(
+                    ParticleTypes.WITCH,
+                    center.x + Math.cos(a) * 0.28,
+                    center.y + (Math.random() - 0.5) * 0.30,
+                    center.z + Math.sin(a) * 0.28,
+                    -Math.cos(a) * 0.035,
+                    0.01,
+                    -Math.sin(a) * 0.035
+            );
+        }
+
+        SoundEvent s = soundOfByIdFallback("entity.enderman.teleport", SoundEvents.ENTITY_ENDERMAN_TELEPORT);
+        if (s != null) world.playSound(center.x, center.y, center.z, s, SoundCategory.PLAYERS, 1.15f, 0.62f, false);
+    }
+
+    private static void spawnFreeze(ClientWorld world, Vec3d pos) {
+        double x = pos.x;
+        double y = pos.y + 0.95;
+        double z = pos.z;
+
+        for (int i = 0; i < FREEZE_PARTICLES; i++) {
+            double angle = Math.random() * Math.PI * 2.0;
+            double speed = 0.10 + Math.random() * 0.28;
+            double vx = Math.cos(angle) * speed;
+            double vz = Math.sin(angle) * speed;
+            double vy = -0.02 + Math.random() * 0.30;
+
+            ParticleEffect p;
+            if (i % 4 == 0) p = ParticleTypes.SNOWFLAKE;
+            else if (i % 7 == 0) p = ParticleTypes.ITEM_SNOWBALL;
+            else p = (i % 2 == 0) ? FREEZE_BRIGHT : FREEZE_BLUE;
+
+            world.addParticle(
+                    p,
+                    x + (Math.random() - 0.5) * 0.35,
+                    y + (Math.random() - 0.5) * 0.65,
+                    z + (Math.random() - 0.5) * 0.35,
+                    vx, vy, vz
+            );
+        }
+
+        for (int ring = 0; ring < 2; ring++) {
+            double radius = (ring == 0) ? 0.52 : 0.92;
+            int count = (ring == 0) ? 18 : 26;
+            for (int i = 0; i < count; i++) {
+                double a = Math.PI * 2.0 * i / count;
+                ParticleEffect dust = (i % 2 == 0) ? FREEZE_BRIGHT : FREEZE_BLUE;
+                world.addParticle(dust, x + Math.cos(a) * radius, pos.y + 0.12, z + Math.sin(a) * radius, 0.0, 0.025, 0.0);
+            }
+        }
+
+        SoundEvent crack = soundOfByIdFallback("block.glass.break", SoundEvents.ENTITY_GENERIC_HURT);
+        if (crack != null) world.playSound(x, y, z, crack, SoundCategory.PLAYERS, 1.25f, 1.35f, false);
+    }
+
+    private static void spawnEnder(ClientWorld world, Vec3d pos, long nowMs) {
+        Vec3d center = new Vec3d(pos.x, pos.y + 0.95, pos.z);
+        int id = enderSeq++;
+        enderBursts.put(id, new EnderBurst(id, center, nowMs, nowMs + ENDER_DURATION_MS));
+
+        SoundEvent s = soundOfByIdFallback("entity.enderman.stare", SoundEvents.ENTITY_ENDERMAN_TELEPORT);
+        if (s != null) world.playSound(center.x, center.y, center.z, s, SoundCategory.PLAYERS, 1.0f, 0.55f, false);
+        emitEnderFrame(world, enderBursts.get(id), nowMs);
+    }
+
+    private static void tickEnderBursts(ClientWorld world, long nowMs) {
+        if (enderBursts.isEmpty()) return;
+
+        Iterator<Map.Entry<Integer, EnderBurst>> it = enderBursts.entrySet().iterator();
+        while (it.hasNext()) {
+            EnderBurst eb = it.next().getValue();
+            if (nowMs >= eb.endMs) {
+                finishEnder(world, eb);
+                it.remove();
+                continue;
+            }
+            emitEnderFrame(world, eb, nowMs);
+        }
+    }
+
+    private static void emitEnderFrame(ClientWorld world, EnderBurst eb, long nowMs) {
+        eb.tick++;
+        double t = MathHelper.clamp((nowMs - eb.startMs) / (double) ENDER_DURATION_MS, 0.0, 1.0);
+        double radius = 0.22 + ENDER_MAX_RADIUS * (1.0 - t);
+        double vertical = 0.35 + 1.05 * (1.0 - t);
+
+        int count = Math.max(8, (int) Math.round(ENDER_PARTICLES_PER_TICK * (0.70 + t * 0.55)));
+        for (int i = 0; i < count; i++) {
+            double a = Math.random() * Math.PI * 2.0;
+            double r = radius * (0.55 + Math.random() * 0.45);
+            double px = eb.basePos.x + Math.cos(a) * r;
+            double py = eb.basePos.y + (Math.random() - 0.5) * vertical;
+            double pz = eb.basePos.z + Math.sin(a) * r;
+
+            Vec3d inward = eb.basePos.subtract(new Vec3d(px, py, pz));
+            if (inward.lengthSquared() > 1.0E-6) inward = inward.normalize();
+            double speed = 0.10 + t * 0.14 + Math.random() * 0.08;
+
+            ParticleEffect p;
+            if (i % 6 == 0) p = ParticleTypes.REVERSE_PORTAL;
+            else if (i % 3 == 0) p = ENDER_DARK;
+            else p = ENDER_PURPLE;
+
+            world.addParticle(p, px, py, pz, inward.x * speed, inward.y * speed, inward.z * speed);
+        }
+
+        if (eb.tick % 2 == 0) {
+            world.addParticle(ParticleTypes.WITCH, eb.basePos.x, eb.basePos.y, eb.basePos.z, 0.0, 0.01, 0.0);
+        }
+    }
+
+    private static void finishEnder(ClientWorld world, EnderBurst eb) {
+        Vec3d c = eb.basePos;
+        world.addParticle(ParticleTypes.EXPLOSION, c.x, c.y, c.z, 0.0, 0.0, 0.0);
+        for (int i = 0; i < 24; i++) {
+            double a = Math.random() * Math.PI * 2.0;
+            double vy = (Math.random() - 0.5) * 0.18;
+            double speed = 0.08 + Math.random() * 0.12;
+            world.addParticle(ParticleTypes.PORTAL, c.x, c.y, c.z, Math.cos(a) * speed, vy, Math.sin(a) * speed);
+        }
+        SoundEvent s = soundOfByIdFallback("entity.enderman.teleport", SoundEvents.ENTITY_ENDERMAN_TELEPORT);
+        if (s != null) world.playSound(c.x, c.y, c.z, s, SoundCategory.PLAYERS, 1.2f, 0.82f, false);
+    }
+
+    private static void spawnRose(ClientWorld world, Vec3d pos) {
+        double x = pos.x;
+        double y = pos.y + 0.9;
+        double z = pos.z;
+
+        for (int i = 0; i < ROSE_PARTICLES; i++) {
+            double angle = Math.random() * Math.PI * 2.0;
+            double radius = 0.18 + Math.random() * 0.75;
+            double px = x + Math.cos(angle) * radius;
+            double py = y + (Math.random() - 0.5) * 0.85;
+            double pz = z + Math.sin(angle) * radius;
+            double tangentX = -Math.sin(angle) * (0.025 + Math.random() * 0.035);
+            double tangentZ = Math.cos(angle) * (0.025 + Math.random() * 0.035);
+
+            ParticleEffect p;
+            if (i % 3 == 0) p = ParticleTypes.CHERRY_LEAVES;
+            else p = (i % 2 == 0) ? ROSE_PINK : ROSE_RED;
+
+            world.addParticle(p, px, py, pz, tangentX, 0.035 + Math.random() * 0.085, tangentZ);
+        }
+
+        for (int i = 0; i < 18; i++) {
+            double a = Math.PI * 2.0 * i / 18.0;
+            double r = 0.45 + (i % 3) * 0.15;
+            world.addParticle(ROSE_PINK, x + Math.cos(a) * r, pos.y + 0.10, z + Math.sin(a) * r, 0.0, 0.018, 0.0);
+        }
+
+        SoundEvent s = soundOfByIdFallback("block.cherry_leaves.break", SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME);
+        if (s != null) world.playSound(x, y, z, s, SoundCategory.PLAYERS, 1.0f, 1.22f, false);
     }
 
     private static void spawnBlood(ClientWorld world, Vec3d pos) {
