@@ -102,7 +102,7 @@ public final class KillEffect {
     private static EffectType effect = EffectType.THUNDER;
 
     // ===== Kill heuristic tracking =====
-    private static final long TRACK_TIMEOUT_MS = 2500;
+    private static final long TRACK_TIMEOUT_MS = 1000;
     private static final Map<Integer, Track> tracks = new HashMap<>();
 
     private static final class Track {
@@ -517,7 +517,6 @@ public final class KillEffect {
         while (it.hasNext()) {
             PotionDrop pd = it.next().getValue();
             Entity e = world.getEntityById(pd.entityId);
-
             if (e == null) {
                 it.remove();
                 continue;
