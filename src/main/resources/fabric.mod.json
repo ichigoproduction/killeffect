@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "killeffect",
+  "version": "${version}",
+  "name": "killeffect",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/killeffect/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dose.killeffect.client.KilleffectClient"
+    ],
+    "main": [
+      "dose.killeffect.Killeffect"
+    ]
+  },
+  "mixins": [
+    "killeffect.mixins.json",
+    {
+      "config": "killeffect.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
