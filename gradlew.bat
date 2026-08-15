@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 
-set "GRADLE_VERSION=9.5.1"
+set "GRADLE_VERSION=9.2.1"
 set "PROJECT_DIR=%~dp0"
 set "BOOTSTRAP_DIR=%PROJECT_DIR%.gradle-bootstrap"
 set "GRADLE_HOME=%BOOTSTRAP_DIR%\gradle-%GRADLE_VERSION%"
