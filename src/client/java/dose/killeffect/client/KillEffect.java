@@ -15,7 +15,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.LightningEntity;
-import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.SpawnReason;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -41,8 +41,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 public final class KillEffect {
     private KillEffect() {}
@@ -151,16 +154,27 @@ public final class KillEffect {
     private static boolean enabled = true;
     private static EffectType effect = EffectType.THUNDER;
 
-    // ===== Kill heuristic tracking =====
+    // ===== Player-only kill heuristic tracking =====
     private static final long TRACK_TIMEOUT_MS = 1000;
-    private static final Map<Integer, Track> tracks = new HashMap<>();
+
+    // UUID is stable across entity replacement/respawn, unlike a runtime entity id.
+    // Only one active Track can exist for the same player at a time.
+    private static final Map<UUID, Track> tracks = new HashMap<>();
+
+    // Once a kill effect fires, keep that player locked until an actually alive
+    // PlayerEntity with the same UUID is observed in the current world again.
+    // This prevents rapid attack packets/events around the death transition from
+    // creating another Track and firing the same kill effect more than once.
+    private static final Set<UUID> killLockedPlayers = new HashSet<>();
 
     private static final class Track {
-        final int entityId;
+        final UUID playerUuid;
+        int entityId;
         long lastSeenMs;
         Vec3d lastPos;
 
-        Track(int entityId, long nowMs, Vec3d pos) {
+        Track(UUID playerUuid, int entityId, long nowMs, Vec3d pos) {
+            this.playerUuid = playerUuid;
             this.entityId = entityId;
             this.lastSeenMs = nowMs;
             this.lastPos = pos;
@@ -241,7 +255,10 @@ public final class KillEffect {
                             })
                             .then(ClientCommandManager.literal("toggle").executes(ctx -> {
                                 enabled = !enabled;
-                                if (!enabled) tracks.clear();
+                                if (!enabled) {
+                                    tracks.clear();
+                                    killLockedPlayers.clear();
+                                }
                                 saveConfig();
                                 send(statusLine());
                                 return 1;
@@ -347,19 +364,37 @@ public final class KillEffect {
     /** Called by the interaction-manager mixin when the local player attacks an entity. */
     public static void onLocalAttack(Entity target) {
         if (!enabled) return;
-        if (!(target instanceof LivingEntity)) return;
+        if (!(target instanceof PlayerEntity player)) return;
 
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null || mc.world == null) return;
+        if (mc.player == player) return;
 
-        int id = target.getId();
+        UUID uuid = player.getUuid();
+        int id = player.getId();
         long now = System.currentTimeMillis();
-        Vec3d pos = target.getPos();
 
-        Track t = tracks.get(id);
+        // A player that already produced an effect for the current death stays
+        // locked. Unlock only when the current world contains a live PlayerEntity
+        // for that UUID again (normally the next life/respawn). A stale target
+        // object from the death transition therefore cannot unlock itself.
+        if (killLockedPlayers.contains(uuid)) {
+            Entity current = mc.world.getEntityById(id);
+            boolean aliveAgain = current instanceof PlayerEntity currentPlayer
+                    && currentPlayer.getUuid().equals(uuid)
+                    && currentPlayer.isAlive();
+            if (!aliveAgain) return;
+            killLockedPlayers.remove(uuid);
+        }
+
+        Vec3d pos = player.getPos();
+        Track t = tracks.get(uuid);
         if (t == null) {
-            tracks.put(id, new Track(id, now, pos));
+            tracks.put(uuid, new Track(uuid, id, now, pos));
         } else {
+            // Keep one Track per player while refreshing the latest runtime id
+            // and position in case the server replaces the client-side entity.
+            t.entityId = id;
             t.lastSeenMs = now;
             t.lastPos = pos;
         }
@@ -376,7 +411,7 @@ public final class KillEffect {
 
         if (tracks.isEmpty()) return;
 
-        Iterator<Map.Entry<Integer, Track>> it = tracks.entrySet().iterator();
+        Iterator<Map.Entry<UUID, Track>> it = tracks.entrySet().iterator();
         while (it.hasNext()) {
             Track tr = it.next().getValue();
 
@@ -386,15 +421,28 @@ public final class KillEffect {
             }
 
             Entity e = world.getEntityById(tr.entityId);
-            if (e != null) tr.lastPos = e.getPos();
-
             boolean dead;
-            if (e == null) dead = true;
-            else if (e instanceof LivingEntity le) dead = !le.isAlive();
-            else dead = false;
+
+            if (e == null) {
+                // Preserve the existing server-compatible heuristic: disappearance
+                // within the tracking window counts as the death transition.
+                dead = true;
+            } else if (e instanceof PlayerEntity player
+                    && player.getUuid().equals(tr.playerUuid)) {
+                tr.lastPos = player.getPos();
+                dead = !player.isAlive();
+            } else {
+                // Runtime entity ids may be reused. Never let another entity or
+                // another player inherit this player's pending kill track.
+                it.remove();
+                continue;
+            }
 
             if (dead) {
-                if (enabled && tr.lastPos != null) {
+                // Set.add() is the single-fire gate. Even if several attack/death
+                // observations overlap, only the first transition for this UUID
+                // can produce a kill effect until the player is alive again.
+                if (enabled && tr.lastPos != null && killLockedPlayers.add(tr.playerUuid)) {
                     trigger(effect, world, tr.lastPos, nowMs);
                 }
                 it.remove();
