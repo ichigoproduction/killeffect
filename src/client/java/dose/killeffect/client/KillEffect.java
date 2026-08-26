@@ -1,5 +1,11 @@
 package dose.killeffect.client;
 
+import dose.killeffect.client.effects.AuroraEffect;
+import dose.killeffect.client.effects.ButterflyEffect;
+import dose.killeffect.client.effects.LotusEffect;
+import dose.killeffect.client.effects.MoonlightEffect;
+import dose.killeffect.client.effects.StarlightEffect;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
@@ -121,7 +127,12 @@ public final class KillEffect {
         VOID,
         FREEZE,
         ENDER,
-        ROSE;
+        ROSE,
+        AURORA,
+        STARLIGHT,
+        BUTTERFLY,
+        MOONLIGHT,
+        LOTUS;
 
         static EffectType parse(String s) {
             if (s == null) return THUNDER;
@@ -137,6 +148,11 @@ public final class KillEffect {
             if (q.equals("freeze") || q.equals("ice")) return FREEZE;
             if (q.equals("ender")) return ENDER;
             if (q.equals("rose")) return ROSE;
+            if (q.equals("aurora")) return AURORA;
+            if (q.equals("starlight") || q.equals("star")) return STARLIGHT;
+            if (q.equals("butterfly") || q.equals("butterflies")) return BUTTERFLY;
+            if (q.equals("moonlight") || q.equals("moon")) return MOONLIGHT;
+            if (q.equals("lotus")) return LOTUS;
             return null;
         }
 
@@ -329,6 +345,36 @@ public final class KillEffect {
                                 send(statusLine());
                                 return 1;
                             }))
+                            .then(ClientCommandManager.literal("aurora").executes(ctx -> {
+                                effect = EffectType.AURORA;
+                                saveConfig();
+                                send(statusLine());
+                                return 1;
+                            }))
+                            .then(ClientCommandManager.literal("starlight").executes(ctx -> {
+                                effect = EffectType.STARLIGHT;
+                                saveConfig();
+                                send(statusLine());
+                                return 1;
+                            }))
+                            .then(ClientCommandManager.literal("butterfly").executes(ctx -> {
+                                effect = EffectType.BUTTERFLY;
+                                saveConfig();
+                                send(statusLine());
+                                return 1;
+                            }))
+                            .then(ClientCommandManager.literal("moonlight").executes(ctx -> {
+                                effect = EffectType.MOONLIGHT;
+                                saveConfig();
+                                send(statusLine());
+                                return 1;
+                            }))
+                            .then(ClientCommandManager.literal("lotus").executes(ctx -> {
+                                effect = EffectType.LOTUS;
+                                saveConfig();
+                                send(statusLine());
+                                return 1;
+                            }))
                             .then(ClientCommandManager.argument("effect", StringArgumentType.word())
                                     .executes(ctx -> {
                                         String arg = StringArgumentType.getString(ctx, "effect");
@@ -342,7 +388,7 @@ public final class KillEffect {
                                             send(header()
                                                     .append(gray("Unknown effect: "))
                                                     .append(light(arg))
-                                                    .append(gray("  (supported: thunder, totem, wing, potion, soul, blood, explosion, void, freeze, ender, rose)")));
+                                                    .append(gray("  (supported: thunder, totem, wing, potion, soul, blood, explosion, void, freeze, ender, rose, aurora, starlight, butterfly, moonlight, lotus)")));
                                             return 1;
                                         }
 
@@ -465,6 +511,11 @@ public final class KillEffect {
         else if (type == EffectType.FREEZE) spawnFreeze(world, pos);
         else if (type == EffectType.ENDER) spawnEnder(world, pos);
         else if (type == EffectType.ROSE) spawnRose(world, pos);
+        else if (type == EffectType.AURORA) AuroraEffect.spawn(world, pos);
+        else if (type == EffectType.STARLIGHT) StarlightEffect.spawn(world, pos);
+        else if (type == EffectType.BUTTERFLY) ButterflyEffect.spawn(world, pos);
+        else if (type == EffectType.MOONLIGHT) MoonlightEffect.spawn(world, pos);
+        else if (type == EffectType.LOTUS) LotusEffect.spawn(world, pos);
     }
 
     private static void spawnEnder(ClientWorld world, Vec3d pos) {
