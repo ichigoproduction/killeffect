@@ -4,7 +4,8 @@
   "package": "dose.killeffect.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "ClientPlayerInteractionManagerMixin"
+    "ClientPlayerInteractionManagerMixin",
+    "ClientCommonNetworkHandlerMixin"
   ],
   "injectors": {
     "defaultRequire": 1
