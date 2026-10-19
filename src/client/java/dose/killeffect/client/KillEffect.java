@@ -124,6 +124,7 @@ public final class KillEffect {
         SOUL,
         BLOOD,
         EXPLOSION,
+        TNT,
         VOID,
         FREEZE,
         ENDER,
@@ -144,6 +145,7 @@ public final class KillEffect {
             if (q.equals("soul") || q.equals("glitch")) return SOUL;
             if (q.equals("blood")) return BLOOD;
             if (q.equals("explosion") || q.equals("explode")) return EXPLOSION;
+            if (q.equals("tnt")) return TNT;
             if (q.equals("void") || q.equals("blackhole") || q.equals("black_hole")) return VOID;
             if (q.equals("freeze") || q.equals("ice")) return FREEZE;
             if (q.equals("ender")) return ENDER;
@@ -321,6 +323,12 @@ public final class KillEffect {
                                 send(statusLine());
                                 return 1;
                             }))
+                            .then(ClientCommandManager.literal("tnt").executes(ctx -> {
+                                effect = EffectType.TNT;
+                                saveConfig();
+                                send(statusLine());
+                                return 1;
+                            }))
                             .then(ClientCommandManager.literal("void").executes(ctx -> {
                                 effect = EffectType.VOID;
                                 saveConfig();
@@ -388,7 +396,7 @@ public final class KillEffect {
                                             send(header()
                                                     .append(gray("Unknown effect: "))
                                                     .append(light(arg))
-                                                    .append(gray("  (supported: thunder, totem, wing, potion, soul, blood, explosion, void, freeze, ender, rose, aurora, starlight, butterfly, moonlight, lotus)")));
+                                                    .append(gray("  (supported: thunder, totem, wing, potion, soul, blood, explosion, tnt, void, freeze, ender, rose, aurora, starlight, butterfly, moonlight, lotus)")));
                                             return 1;
                                         }
 
@@ -507,6 +515,7 @@ public final class KillEffect {
         else if (type == EffectType.SOUL) spawnSoul(world, pos, nowMs);
         else if (type == EffectType.BLOOD) spawnBlood(world, pos);
         else if (type == EffectType.EXPLOSION) spawnExplosion(world, pos);
+        else if (type == EffectType.TNT) spawnTnt(world, pos);
         else if (type == EffectType.VOID) spawnVoid(world, pos, nowMs);
         else if (type == EffectType.FREEZE) spawnFreeze(world, pos);
         else if (type == EffectType.ENDER) spawnEnder(world, pos);
@@ -831,6 +840,22 @@ public final class KillEffect {
         SoundEvent hit = soundOfByIdFallback("entity.player.attack.crit", SoundEvents.ENTITY_GENERIC_HURT);
         if (hit != null) {
             world.playSound(x, y, z, hit, SoundCategory.PLAYERS, 1.1f, 0.78f, false);
+        }
+    }
+
+    /** Vanilla TNT-style explosion particle, separate from the custom explosion effect. */
+    private static void spawnTnt(ClientWorld world, Vec3d pos) {
+        double x = pos.x;
+        double y = pos.y + 0.95;
+        double z = pos.z;
+
+        // This is the vanilla large explosion emitter particle used for TNT-like blasts.
+        // Client particles and audio only: no explosion entity, block damage, or knockback.
+        world.addParticle(ParticleTypes.EXPLOSION_EMITTER, x, y, z, 0.0, 0.0, 0.0);
+
+        SoundEvent boom = soundOfByIdFallback("entity.generic.explode", SoundEvents.ENTITY_GENERIC_EXPLODE);
+        if (boom != null) {
+            world.playSound(x, y, z, boom, SoundCategory.PLAYERS, 1.0f, 1.0f, false);
         }
     }
 
